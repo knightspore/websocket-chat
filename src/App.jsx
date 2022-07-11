@@ -1,41 +1,72 @@
-import * as React from "react";
-import { useWebSocket } from "react-use-websocket/dist/lib/use-websocket";
-import ChatBox from "./ChatBox";
-import Feed from "./Feed";
-import Layout from "./Layout";
+import * as React from 'react';
+import {useWebSocket} from 'react-use-websocket/dist/lib/use-websocket';
+import ChatBox from './ChatBox';
+import Feed from './Feed';
+import Layout from './Layout';
 
-const FEED_URL = "ws://192.168.0.104:8080";
+const FEED_URL = 'ws://192.168.0.109:8080';
 
 function App() {
   const [messages, setMessages] = React.useState([]);
+  const [peers, setPeers] = React.useState([]);
   const [connected, setConnected] = React.useState(false);
-  const [user, setUser] = React.useState("");
+  const [user, setUser] = React.useState('');
+
+  // Set / get user
+  React.useEffect(() => {
+    const u = localStorage.getItem('user');
+    if (u) {
+      setUser(u);
+    } else {
+      if (!user) {
+        setUser(prompt('Enter your name'));
+        localStorage.setItem('user', user);
+      }
+    }
+  }, [user]);
+
+  // Websockets Setup
 
   const handleConnected = () => {
     setConnected(true);
-    getWebSocket().send(JSON.stringify({ type: "identify", user: user }));
+    getWebSocket().send(JSON.stringify({type: 'identify', user: user}));
   };
 
-  const handleMessage = (data) => {
-    setMessages((messages) => [...messages, data]);
+  const handleMessage = data => {
+    const message = JSON.parse(data);
+    console.log(message);
+    if (JSON.parse(data).type === 'history') {
+      message.chatHistory &&
+        setMessages(messages => [...messages, message.chatHistory]);
+      message.users && setPeers(peers => [...peers, message.users]);
+    } else {
+      setMessages(messages => [...messages, message]);
+    }
   };
 
-  const { _, getWebSocket } = useWebSocket(FEED_URL, {
+  const {getWebSocket} = useWebSocket(FEED_URL, {
+    // Connect to Server
     onOpen: () => handleConnected(),
-    onClose: () => setConnected(false),
-    onMessage: ({ data }) => handleMessage(data),
+    // Disconnect From Server
+    onClose: () => {
+      messages.push({
+        type: 'message',
+        user: 'Server',
+        message: 'Disconnected from server',
+        timestamp: new Date().Now(),
+      });
+      setConnected(false);
+    },
+    onMessage: ({data}) => handleMessage(data),
+    reconnect: true,
   });
-
-  React.useEffect(() => {
-    const input = prompt("What is your name?");
-    setUser(input);
-  }, []);
 
   return (
     <Layout
-      chat={<ChatBox {...{ getWebSocket, user, connected }} />}
-      feed={<Feed messages={messages} />}
+      chat={<ChatBox {...{getWebSocket, user, connected}} />}
+      feed={<Feed setUserList={setPeers} username={user} messages={messages} />}
       connected={connected}
+      users={peers}
     />
   );
 }
